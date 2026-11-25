@@ -109,11 +109,12 @@ Chọn 1 trace chậm nhất bạn tìm được:
 
 | Số instance | RPS | p50 (ms) | p95 (ms) | p99 (ms) | Failures |
 |---|---|---|---|---|---|
-| 1 | | | | | |
-| 3 | | | | | |
+| 1 | 67.54 | 190 | 220 | 1700 | 99 / 7894 (1.25%) |
+| 3 | 59.04 | 200 | 840 | 8600 | 73 / 6994 (1.04%) |
 
 **Giải thích kết quả:** Scale có cải thiện p95 không? Nút thắt nằm ở đâu?
-- `[ĐIỀN GIẢI THÍCH DỰA TRÊN SỐ LIỆU CSV THẬT]`
+- Trên cùng một máy local (chạy chung Nginx, Prometheus, Grafana, Jaeger, Locust và các container agent giới hạn `0.5 CPU`), việc tăng từ 1 lên 3 instance **không cải thiện p95** (tăng từ `220 ms` lên `840 ms`, `p99` lên `8600 ms`, RPS giảm nhẹ từ `67.54` xuống `59.04`).
+- **Nguyên nhân (nút thắt):** Mock LLM dùng `asyncio.sleep` (I/O-bound, không phải CPU-bound), nên 1 instance FastAPI/uvicorn async đã xử lý tốt 100 user đồng thời; khi chạy 3 container cùng lúc trên cùng CPU host kèm OpenTelemetry export sang Jaeger, tranh chấp CPU/context-switch và overhead qua Nginx trở thành nút thắt. Scale ngang chỉ cải thiện rõ khi workload là CPU-bound hoặc các instance nằm trên các node/CPU tách biệt.
 
 ---
 
