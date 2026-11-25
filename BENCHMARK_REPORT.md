@@ -30,6 +30,8 @@
 | 50 | 104.55 | 193.6 | 280.2 | 1700.8 | 1.00% | PASS |
 | 100 | 144.46 | 207.3 | 356.0 | 1753.4 | 0.67% | PASS |
 
+Các file JSON của lượt đo develop cũng đặt ngưỡng p95 500 ms. Cả bốn mức tải đạt ngưỡng này và ngưỡng lỗi 2%.
+
 **Nhận xét:** RPS có tăng tuyến tính theo concurrency không? Vì sao?
 - RPS tăng gần tuyến tính ở mức thấp (`c=1` → `4.29 req/s`, `c=10` → `37.01 req/s`), sau đó tăng chậm dần và bắt đầu bão hoà ở mức cao (`c=50` → `104.55 req/s`, `c=100` → `144.46 req/s`) trong khi `p95` tăng từ `219.6 ms` lên `356.0 ms` do giới hạn xử lý đồng thời của một process uvicorn + event loop/client connection pool.
 
@@ -56,6 +58,8 @@
 | Cost / câu đúng (USD) | $0.00040995 | $0.00003607 | $0.00003404 |
 | Quality gate | FAIL | PASS | PASS |
 
+Hàng Quality gate phản ánh lượt eval ghi trong báo cáo. So với SLO accuracy 100% ở mục 1, chỉ v2 sau khi sửa knowledge base đạt yêu cầu.
+
 **Những câu v2 trả lời sai ban đầu và cách bạn sửa:**
 
 | ID | Keyword bị thiếu | Bạn đã sửa gì |
@@ -72,35 +76,41 @@
 
 ### 4.1 Screenshot
 
-- [ ] Dashboard Grafana khi đang có tải (`screenshots/grafana-dashboard.png`)
-- [ ] Một trace chậm trong Jaeger (`screenshots/jaeger-slow-trace.png`)
-- [ ] Một trace lỗi trong Jaeger (`screenshots/jaeger-error-trace.png`)
-- [ ] Trang Alerts của Prometheus với ít nhất 2 alert đang **firing** (`screenshots/prometheus-alert-firing.png`)
+- [x] [Dashboard Grafana khi đang có tải](screenshots/grafana-dashboard.png)
+- [x] [Trace chậm trong Jaeger](screenshots/jaeger-slow-trace.png)
+- [x] [Trace lỗi HTTP 503 trong Jaeger](screenshots/jaeger-error-trace.png)
+- [x] [Hai alert đang firing trên Prometheus](screenshots/prometheus-alert-firing.png)
 
 ### 4.2 Thí nghiệm "phá hệ thống"
 
 | # | Thay đổi | Alert nào firing | Thời gian từ lúc đổi → firing | Panel nào phản ánh rõ nhất |
 |---|---|---|---|---|
-| A | `MOCK_ERROR_RATE=0.2` | | | |
-| B | `MOCK_SLOW_RATE=0.3` | | | |
-| C | `LLM_MODEL=mock-llm-large` | | | |
-| D | `docker pause` 1 instance | | | |
-| E | `AGENT_VERSION=v1` | (Không có alert firing) | — | — |
+| A | `MOCK_ERROR_RATE=0.2` | `AgentHighErrorRate` | ~75 giây | Error rate |
+| B | `MOCK_SLOW_RATE=0.3` | `AgentHighLatencyP95` | ~135 giây | Latency p95 |
+| C | `LLM_MODEL=mock-llm-large` | `LLMCostBurnRateHigh` | ~155 giây | Cost burn rate (USD/giờ) |
+| D | `docker pause` 1 trong 2 instance | `AgentInstanceDown` | ~39 giây | Instances up |
+| E | `AGENT_VERSION=v1` | Không có alert firing trong 150 giây | — | Eval trên golden dataset |
+
+Ở lượt A+B, đặt đồng thời hai biến trên một instance và tạo tải bằng 30 người dùng Locust. Thời gian được tính từ lúc chạy lệnh cập nhật agent đến mẫu `ALERTS{alertstate="firing"}` đầu tiên, truy vấn theo bước 1 giây. Cả hai alert vào `pending` khoảng 14 giây sau lúc cập nhật, rồi chuyển sang `firing` sau thời gian chờ 60 và 120 giây tương ứng. Ảnh Grafana trong lượt này ghi nhận 15.3 req/s, 21.12% lỗi và p95 1.90 giây.
+
+Ở lượt C, chuyển sang model lớn đồng thời tăng từ một lên hai instance. Prometheus báo mức chi phí quy đổi $15.35/giờ khi quan sát alert đang `firing`. Ở lượt D, Prometheus phát hiện một target ngừng scrape. Thời gian firing của C và D được tính từ lúc chạy lệnh đến `activeAt` cộng thời gian chờ của rule (120 và 30 giây tương ứng).
 
 **Thí nghiệm E không làm alert nào firing. Bạn sẽ phát hiện loại sự cố này trong production bằng cách nào?**
-- Phải kết hợp **eval trên golden dataset (CI quality gate)** trước khi deploy, theo dõi **chất lượng câu trả lời / feedback người dùng (thumbs up/down)** và **độ dài/chi phí token bất thường** vì Prometheus chỉ đo sức khoẻ hạ tầng (RPS, latency, error rate), không đo độ đúng ngữ nghĩa của câu trả lời.
+- Lượt đối chứng dùng 8 người dùng Locust và một Prometheus mới. Locust ghi nhận p95 `/ask` là 190 ms và 23/772 lỗi (2.98%), gồm 9 phản hồi 502 từ Nginx và 14 phản hồi 503 từ agent. Prometheus không ghi nhận mẫu `ALERTS{alertstate="firing"}` nào trong lượt này.
+- Chạy eval trên golden dataset ở CI và theo dõi phản hồi người dùng sau deploy để phát hiện suy giảm chất lượng. Các alert hiện tại đo latency, lỗi, tình trạng instance và chi phí. Eval ở mục 3 cho thấy v1 chỉ đạt 1/23 câu.
 
 ### 4.3 Debug bằng trace
 
-Chọn 1 trace chậm nhất bạn tìm được:
-
-- `trace_id`: `[ĐIỀN TRACE_ID THẬT]`
-- Tổng thời gian: `[ĐIỀN SỐ] ms`
-- Span chiếm nhiều thời gian nhất: `[ĐIỀN TÊN SPAN] ([ĐIỀN SỐ] ms, [ĐIỀN %]%)`
-- Dòng log tương ứng (grep theo `trace_id`):
+Trace `05a8571f8072c80471d45f46ef891f8e` là request `POST /ask` thành công chậm nhất trong log đã lấy. Span gốc kéo dài 3206.71 ms. Trong các bước xử lý bên trong, `chat mock-llm-small` chiếm 2436.16 ms (76.0% tổng thời gian), còn `agent.retrieve_context` mất 20.91 ms.
 
 ```json
-{"message": "DÁN DÒNG LOG JSON THẬT CÓ CÙNG TRACE_ID VÀO ĐÂY"}
+{"ts":"2026-11-25T16:39:11.67875+07:00","level":"INFO","service":"observable-agent","instance":"cdbcc97f8a3a","event":"http_request","trace_id":"05a8571f8072c80471d45f46ef891f8e","span_id":"9729719a47cf96fb","request_id":"454267e71ef3","method":"POST","route":"/ask","status":200,"ms":3205.2}
+```
+
+Trace `d96d00978cd6f622d01a031ef5be90a3` kéo dài 98.12 ms, trả HTTP 503 và có span `chat mock-llm-small` ở trạng thái lỗi. Log `llm_error` xác nhận lỗi đến từ upstream giả lập.
+
+```json
+{"ts":"2026-11-25T16:38:07.779784+07:00","level":"INFO","service":"observable-agent","instance":"cdbcc97f8a3a","event":"llm_error","trace_id":"d96d00978cd6f622d01a031ef5be90a3","span_id":"86e8fc5838f4b80c","request_id":"1c068964455d","error":"Upstream LLM error: 503 Service Unavailable (mock)"}
 ```
 
 ---
@@ -112,9 +122,11 @@ Chọn 1 trace chậm nhất bạn tìm được:
 | 1 | 67.54 | 190 | 220 | 1700 | 99 / 7894 (1.25%) |
 | 3 | 59.04 | 200 | 840 | 8600 | 73 / 6994 (1.04%) |
 
+Bảng lấy dòng `Aggregated` của Locust, gồm cả `/ask` và `/health`. Riêng `POST /ask`, p95 tăng từ 230 ms lên 1000 ms. Lượt ba instance chạm ngưỡng và trượt SLO `< 1000 ms`.
+
 **Giải thích kết quả:** Scale có cải thiện p95 không? Nút thắt nằm ở đâu?
 - Trên cùng một máy local (chạy chung Nginx, Prometheus, Grafana, Jaeger, Locust và các container agent giới hạn `0.5 CPU`), việc tăng từ 1 lên 3 instance **không cải thiện p95** (tăng từ `220 ms` lên `840 ms`, `p99` lên `8600 ms`, RPS giảm nhẹ từ `67.54` xuống `59.04`).
-- **Nguyên nhân (nút thắt):** Mock LLM dùng `asyncio.sleep` (I/O-bound, không phải CPU-bound), nên 1 instance FastAPI/uvicorn async đã xử lý tốt 100 user đồng thời; khi chạy 3 container cùng lúc trên cùng CPU host kèm OpenTelemetry export sang Jaeger, tranh chấp CPU/context-switch và overhead qua Nginx trở thành nút thắt. Scale ngang chỉ cải thiện rõ khi workload là CPU-bound hoặc các instance nằm trên các node/CPU tách biệt.
+- Một instance FastAPI có thể xử lý nhiều request đồng thời trong khi mock LLM chờ bằng `asyncio.sleep`. Lượt chạy ba instance dùng chung máy với Nginx, Locust và stack quan sát. CSV cho thấy tail latency tăng, nhưng cần thêm số liệu CPU, độ trễ upstream và tải của từng instance để xác định nút thắt.
 
 ---
 

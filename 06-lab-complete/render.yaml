@@ -2,6 +2,9 @@ services:
   - type: web
     name: ai-agent-prod
     runtime: docker
+    rootDir: 06-lab-complete
+    plan: free
+    region: singapore
     healthCheckPath: /health
     envVars:
       - key: ENVIRONMENT
@@ -9,8 +12,19 @@ services:
       - key: AGENT_API_KEY
         generateValue: true
       - key: REDIS_URL
-        sync: false
+        fromService:
+          type: keyvalue
+          name: day14-agent-redis
+          property: connectionString
       - key: RATE_LIMIT_PER_MINUTE
         value: "10"
       - key: DAILY_BUDGET_USD
         value: "1.0"
+      - key: MONTHLY_BUDGET_USD
+        value: "10.0"
+
+  - type: keyvalue
+    name: day14-agent-redis
+    plan: free
+    region: singapore
+    ipAllowList: []

@@ -72,13 +72,12 @@ Client ──► Nginx (:80 / reverse proxy) ──► Agent (uvicorn :8000) ─
 ## Part 3: Cloud Deployment
 
 ### Exercise 3.1 / 3.2: Deploy agent Part 6 lên Cloud
-- **Nền tảng:** `[Railway / Render]`
-- **Public URL:** `[ĐIỀN URL PUBLIC THẬT]`
-- **Screenshots:** xem trong `DEPLOYMENT.md` và thư mục `screenshots/` (`dashboard.png`, `running.png`, `test.png`).
+- **Nền tảng:** Render.
+- **Public URL và ảnh kiểm thử:** đang chờ triển khai. Xem [DEPLOYMENT.md](DEPLOYMENT.md).
 
 ### So sánh `railway.toml` vs `render.yaml`
 - **`railway.toml`:** Khai báo ngắn gọn theo từng service (`[build] builder = "DOCKERFILE"`, `[deploy] healthcheckPath = "/health"`). Các biến môi trường và Redis service thường được gắn trực tiếp trên Railway Dashboard/CLI.
-- **`render.yaml` (Blueprint):** Khai báo toàn bộ hạ tầng dạng Infrastructure-as-Code (`services`, `type: web`, `runtime: docker`, `healthCheckPath: /health`, `envVars` hỗ trợ `generateValue: true` cho secret hoặc `sync: false` để nhập tay).
+- **`render.yaml` (Blueprint):** Khai báo web service Docker và Render Key Value. Web service dùng `generateValue: true` cho API key và lấy `REDIS_URL` từ `connectionString` của Key Value.
 - **Khác biệt chính:** `render.yaml` mô tả cả cấu hình service lẫn danh sách env vars tập trung trong một file YAML; `railway.toml` tập trung vào cách build và deploy của service hiện tại, còn env/database liên kết qua dashboard.
 
 ### Exercise 3.3: Pipeline CI/CD Cloud Run (`03-cloud-deployment/production-cloud-run/`)
@@ -214,4 +213,5 @@ Total messages: 10
 ## AI Log (theo `RULES.md`)
 - **Công cụ:** Antigravity AI
 - **Nội dung hỗ trợ:** Hoàn thiện các `TODO` trong `06-lab-complete/` (FastAPI endpoints, `config.py`, `auth.py`, `rate_limiter.py`, `cost_guard.py`, `redis_client.py`, `Dockerfile`, `docker-compose.yml`, `.dockerignore`, `.env.example`, `railway.toml`, `render.yaml`) và soạn khung `MISSION_ANSWERS.md`, `DEPLOYMENT.md`, `BENCHMARK_REPORT.md`.
-- **Tự kiểm tra:** Đã đọc lại toàn bộ code, tự chạy `python check_production_ready.py` trong WSL2 đạt `PASS 12/12`, tự chạy tất cả lệnh benchmark/curl/deploy để điền số liệu thật.
+- **Kết quả kiểm tra:** Output từ WSL2 ghi nhận `python check_production_ready.py` đạt `PASS 12/12`. Báo cáo benchmark đối chiếu với các file JSON và CSV từ lần chạy lab.
+- **Hỗ trợ bổ sung của Codex:** Chạy stack Docker observability, tạo tải bằng Locust, đo alert theo Prometheus, đối chiếu span Jaeger với log JSON và lưu ảnh từ các dashboard đang chạy.
