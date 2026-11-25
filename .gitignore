@@ -34,3 +34,6 @@ Thumbs.db
 # ── Docker volumes (local dev) ─────────────────────��──────
 data/
 volumes/
+
+# ── Local action guide (do not submit) ───────────────────
+LAB_ACTION_GUIDE.md
